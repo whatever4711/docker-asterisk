@@ -1,23 +1,23 @@
-FROM ubuntu:trusty
+FROM phusion/baseimage:0.9.18
 MAINTAINER Marcel Großmann <whatever4711@gmail.com>
 
 # Set environment variables
 ENV DEBIAN_FRONTEND noninteractive
 ENV ASTERISKUSER asterisk
+CMD ["/sbin/my_init"]
 
-#CMD ["/sbin/my_init"]
-
-# Setup services
-#COPY start-apache2.sh /etc/service/apache2/run
-#RUN chmod +x /etc/service/apache2/run
-
-#COPY start-mysqld.sh /etc/service/mysqld/run
-#RUN chmod +x /etc/service/mysqld/run
-
-#COPY start-asterisk.sh /etc/service/asterisk/run
-#RUN chmod +x /etc/service/asterisk/run
-
-#COPY start-amportal.sh /etc/my_init.d/start-amportal.sh
+COPY scripts /usr/src
+COPY conf /usr/conf
+WORKDIR /usr/src
+RUN chmod +x /usr/src/install/*.sh && \
+    chmod +x /usr/src/init/*.sh && \
+		mkdir -p /etc/service/apache2 && \
+		mkdir -p /etc/service/mysqld && \
+		mkdir -p /etc/service/asterisk && \
+		ln -s /usr/src/init/start-apache2.sh /etc/service/apache2/run && \
+		ln -s /usr/src/init/start-mysqld.sh /etc/service/mysqld/run && \
+		ln -s /usr/src/init/start-asterisk.sh /etc/service/asterisk/run && \
+		ln -s /usr/src/init/start-fwconsole.sh /etc/my_init.d/start-fwconsole.sh
 
 # *Loosely* Following steps on FreePBX wiki
 # http://wiki.freepbx.org/display/FOP/Installing+FreePBX+13+on+Ubuntu+Server+14.04.2+LTS
@@ -76,18 +76,14 @@ RUN apt-get -q update && \
 # Install Legacy pear requirements
 RUN pear install Console_Getopt
 
-# Adding Install Scripts and execute
-COPY scripts /usr/src
-WORKDIR /usr/src
-RUN chmod +x /usr/src/install/*.sh
 RUN /usr/src/install/pjproject.sh
 RUN	/usr/src/install/jansson.sh
 RUN /usr/src/install/asterisk.sh $ASTERISKUSER
 
 # Replace default conf files to reduce memory usage
-COPY conf/my-small.cnf /etc/mysql/my.cnf
-COPY conf/mpm_prefork.conf /etc/apache2/mods-available/mpm_prefork.conf
-COPY conf/asterisk.conf /etc/asterisk/asterisk.conf
+RUN cp /usr/conf/my-small.cnf /etc/mysql/my.cnf && \
+    cp /usr/conf/mpm_prefork.conf /etc/apache2/mods-available/mpm_prefork.conf && \
+		cp /usr/conf/asterisk.conf /etc/asterisk/asterisk.conf
 
 # Configure apache
 RUN sed -i 's/\(^upload_max_filesize = \).*/\120M/' /etc/php5/apache2/php.ini \
@@ -104,12 +100,14 @@ RUN /etc/init.d/mysql start \
 	&& mysql -u root -e "flush privileges;"
 
 #Make CDRs work
-COPY conf/cdr/odbc.ini /etc/odbc.ini
-COPY conf/cdr/odbcinst.ini /etc/odbcinst.ini
-COPY conf/cdr/cdr_adaptive_odbc.conf /etc/asterisk/cdr_adaptive_odbc.conf
+RUN cp /usr/conf/cdr/odbc.ini /etc/odbc.ini && \
+    cp /usr/conf/cdr/odbcinst.ini /etc/odbcinst.ini && \
+		cp /usr/conf/cdr/cdr_adaptive_odbc.conf /etc/asterisk/cdr_adaptive_odbc.conf
 RUN chown asterisk:asterisk /etc/asterisk/cdr_adaptive_odbc.conf \
 	&& chmod 775 /etc/asterisk/cdr_adaptive_odbc.conf
 
 RUN /usr/src/install/freepbx.sh
 
 WORKDIR /
+
+#ENTRYPOINT ["/sbin/my_init"]
